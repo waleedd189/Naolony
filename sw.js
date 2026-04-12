@@ -1,55 +1,48 @@
-const CACHE_NAME = 'naolon-v1';
-const urlsToCache = [
-  '/Naolony/',
-  '/Naolony/index.html',
-  '/Naolony/style.css',
-  '/Naolony/app.js'
-];
+const CACHE_NAME = 'naolon-v2';
 
-// تثبيت الكاش عند التحميل الأول
+// Install event - تخزين الملفات
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
-  );
   self.skipWaiting();
 });
 
-// تفعيل وتحديث الكاش
+// Activate event - تنظيف الكاش القديم
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
-        cacheNames.filter(cache => cache !== CACHE_NAME)
-          .map(cache => caches.delete(cache))
+        cacheNames.map(cache => {
+          if (cache !== CACHE_NAME) return caches.delete(cache);
+        })
       );
     })
   );
   self.clients.claim();
 });
 
-// جلب من الكاش أو الشبكة
+// Fetch event - جلب الملفات
 self.addEventListener('fetch', event => {
+  // لو طلب صفحة HTML
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match('/Naolony/index.html'))
+    );
+    return;
+  }
+
+  // باقي الملفات - Network First
   event.respondWith(
-    caches.match(event.request)
+    fetch(event.request)
       .then(response => {
-        // لو موجود في الكاش → رجعه
-        if (response) return response;
-        
-        // لا → جيب من الشبكة وخزنه
-        return fetch(event.request).then(response => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, responseClone);
-          });
-          return response;
+        // نسخ الاستجابة وخزنها
+        const responseClone = response.clone();
+        caches.open(CACHE_NAME).then(cache => {
+          cache.put(event.request, responseClone);
         });
+        return response;
       })
       .catch(() => {
-        // لو مفيش نت → صفحة أوفلاين
-        if (event.request.destination === 'document') {
-          return caches.match('/Naolony/index.html');
-        }
+        // لو فشل - رجع للكاش
+        return caches.match(event.request);
       })
   );
 });
